@@ -4,50 +4,42 @@ const express = require("express");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
-const cors = require("cors");
 const fs = require("fs");
 
 const app = express();
 
-// ---------- CORS (env-driven, strict in production) ----------
+// ---------- CORS (explicit, safe) ----------
 const FRONTEND_URL = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim() : null;
 console.log("FRONTEND_URL =", FRONTEND_URL || "(not set)");
 
-// Allowed origins list (dev + production)
-const allowedOrigins = new Set([
-  "http://localhost:5173", // dev (Vite)
-]);
-if (FRONTEND_URL) allowedOrigins.add(FRONTEND_URL);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-// origin function: decide what to return for Access-Control-Allow-Origin
-function originCallback(origin, callback) {
-  // allow requests with no origin (curl, mobile apps, server-to-server)
-  if (!origin) return callback(null, true);
-
-  // if not production (dev/test) allow localhost and echo origin if in allowed list
-  if (process.env.NODE_ENV !== "production") {
-    if (allowedOrigins.has(origin)) return callback(null, true);
-    // also allow other origins in development to make testing easier:
-    return callback(null, true);
+  // Allow requests with no origin (curl, Postman, server-to-server)
+  if (!origin) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else if (process.env.NODE_ENV !== "production") {
+    // Development: allow the requesting origin for easier testing
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    // Production: only allow when origin matches FRONTEND_URL
+    if (FRONTEND_URL && origin === FRONTEND_URL) {
+      res.setHeader("Access-Control-Allow-Origin", FRONTEND_URL);
+    } else {
+      // Block disallowed origins in production
+      return res.status(403).json({ ok: false, message: "CORS: origin not allowed" });
+    }
   }
 
-  // production: only allow if origin exactly matches allowedOrigins
-  if (allowedOrigins.has(origin)) {
-    // echo the origin back (CORS module will set the header to the request origin)
-    return callback(null, true);
-  }
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 
-  // otherwise block
-  return callback(new Error("CORS policy: origin not allowed"), false);
-}
+  // Respond to preflight
+  if (req.method === "OPTIONS") return res.sendStatus(204);
 
-app.use(
-  cors({
-    origin: originCallback,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  })
-);
+  next();
+});
 
 // Parse JSON bodies
 app.use(express.json());
