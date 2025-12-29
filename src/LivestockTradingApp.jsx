@@ -27,7 +27,9 @@ import {
  */
 
 const LivestockTradingApp = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+  // ✅ CORRECT API BASE (NO localhost fallback)
+const API_BASE = import.meta.env.VITE_API_URL;
+
 
   // view state  ✅ start at home if token exists, else login
   const [currentView, setCurrentView] = useState(() =>
