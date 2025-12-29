@@ -1,4 +1,3 @@
-// src/LivestockTradingApp.jsx
 import React, { useState, useEffect } from "react";
 import {
   Search,
@@ -49,6 +48,12 @@ const LivestockTradingApp = () => {
 
   // real notifications (in-memory for now)
   const [notifications, setNotifications] = useState([]);
+
+  // listing filters
+  const [filterCategory, setFilterCategory] = useState("All Categories");
+  const [filterLocation, setFilterLocation] = useState("All Locations");
+  const [filterPrice, setFilterPrice] = useState("Price Range");
+  const [filtersApplied, setFiltersApplied] = useState(false);
 
   // helper: safe navigation (block pages when not logged in)
   const go = (view) => {
@@ -267,12 +272,19 @@ const LivestockTradingApp = () => {
       </div>
     );
 
-  // ---------- HOME VIEW (with your collage image) ----------
-
-    // ---------- HOME VIEW (your collage as background) ----------
+  // ---------- HOME VIEW (with your collage image, search removed) ----------
 
   const HomeView = () => {
     const userName = user?.name || "Farmer";
+
+    // featured animals: prefer explicit `featured` flag else top priced
+    const featured = animals
+      .filter((a) => a)
+      .sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || (b.price || 0) - (a.price || 0))
+      .slice(0, 6);
+
+    // recent listings (most recent first)
+    const recent = [...animals].slice(0, 6);
 
     return (
       <div
@@ -283,7 +295,7 @@ const LivestockTradingApp = () => {
         <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/45 to-green-900/40" />
 
         <div className="relative max-w-6xl mx-auto px-4 py-16">
-          {/* LEFT: TEXT + SEARCH */}
+          {/* LEFT: TEXT (search removed as requested) */}
           <div className="max-w-xl space-y-5 text-white">
             <p className="text-sm font-semibold text-green-200 uppercase tracking-wide">
               Simple livestock marketplace
@@ -306,28 +318,24 @@ const LivestockTradingApp = () => {
               <li>• Final deal happens directly between buyer and seller.</li>
             </ul>
 
-            <div className="mt-4 flex flex-col sm:flex-row gap-3 max-w-md">
-              <input
-                type="text"
-                placeholder="Search for cows, bulls, oxen..."
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300/60 bg-white/90 focus:outline-none focus:ring-2 focus:ring-green-400 text-gray-800"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+            <div className="mt-4 flex gap-3">
               <button
-                className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600 transition-transform transform hover:-translate-y-0.5"
                 onClick={() => go("listings")}
+                className="bg-green-600 text-white px-5 py-3 rounded-lg font-semibold hover:bg-green-700"
               >
-                <Search size={20} className="inline mr-2" />
-                Browse
+                Browse Listings
+              </button>
+              <button
+                onClick={() => go("sell")}
+                className="bg-white/90 text-green-700 px-5 py-3 rounded-lg font-semibold hover:opacity-95"
+              >
+                List an Animal
               </button>
             </div>
 
             {user && (
               <p className="text-xs md:text-sm text-gray-100">
-                Logged in as <span className="font-semibold">{userName}</span>.{" "}
-                Go to the <span className="font-semibold">Sell</span> page to
-                list your own animals.
+                Logged in as <span className="font-semibold">{userName}</span>. Go to the <span className="font-semibold">Sell</span> page to list your own animals.
               </p>
             )}
           </div>
@@ -375,7 +383,6 @@ const LivestockTradingApp = () => {
       </div>
     );
   };
-
 
   // ---------- LISTINGS ----------
 
@@ -454,13 +461,44 @@ const LivestockTradingApp = () => {
 
   const ListingsView = () => {
     const filteredAnimals = animals.filter((a) => {
-      if (!searchTerm.trim()) return true;
-      const t = searchTerm.toLowerCase();
-      return (
-        (a.title && a.title.toLowerCase().includes(t)) ||
-        (a.breed && a.breed.toLowerCase().includes(t)) ||
-        (a.location && a.location.toLowerCase().includes(t))
-      );
+      // text search
+      if (searchTerm.trim()) {
+        const t = searchTerm.toLowerCase();
+        const matchesText =
+          (a.title && a.title.toLowerCase().includes(t)) ||
+          (a.breed && a.breed.toLowerCase().includes(t)) ||
+          (a.location && a.location.toLowerCase().includes(t));
+        if (!matchesText) return false;
+      }
+
+      // category filter
+      if (
+        filterCategory &&
+        filterCategory !== "All Categories" &&
+        a.category &&
+        !a.category.toLowerCase().includes(filterCategory.toLowerCase())
+      ) {
+        return false;
+      }
+
+      // location filter
+      if (
+        filterLocation &&
+        filterLocation !== "All Locations" &&
+        a.location &&
+        !a.location.toLowerCase().includes(filterLocation.toLowerCase())
+      ) {
+        return false;
+      }
+
+      // price filter (simple ranges)
+      if (filterPrice && filterPrice !== "Price Range" && a.price != null) {
+        const price = Number(a.price || 0);
+        if (filterPrice === "Below ₹30,000" && !(price < 30000)) return false;
+        if (filterPrice === "₹30,000 - ₹50,000" && !(price >= 30000 && price <= 50000)) return false;
+      }
+
+      return true;
     });
 
     return (
@@ -472,24 +510,39 @@ const LivestockTradingApp = () => {
 
           <div className="bg-white p-4 rounded-lg shadow-md mb-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <select className="border rounded-lg px-3 py-2">
+              <select
+                className="border rounded-lg px-3 py-2"
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+              >
                 <option>All Categories</option>
                 <option>Dairy Cows</option>
                 <option>Draft Animals</option>
               </select>
-              <select className="border rounded-lg px-3 py-2">
+              <select
+                className="border rounded-lg px-3 py-2"
+                value={filterLocation}
+                onChange={(e) => setFilterLocation(e.target.value)}
+              >
                 <option>All Locations</option>
                 <option>Karnataka</option>
                 <option>Bengaluru</option>
                 <option>Mysuru</option>
                 <option>Mandya</option>
               </select>
-              <select className="border rounded-lg px-3 py-2">
+              <select
+                className="border rounded-lg px-3 py-2"
+                value={filterPrice}
+                onChange={(e) => setFilterPrice(e.target.value)}
+              >
                 <option>Price Range</option>
                 <option>Below ₹30,000</option>
                 <option>₹30,000 - ₹50,000</option>
               </select>
-              <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+              <button
+                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                onClick={() => setFiltersApplied((s) => !s)}
+              >
                 <Filter size={20} className="inline mr-2" />
                 Apply
               </button>
@@ -1211,75 +1264,91 @@ const LivestockTradingApp = () => {
     );
   };
 
-  const LoginView = () => {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [loading, setLoading] = useState(false);
+ // ---------- LoginView (split: image left, form right) ----------
+// ---------- LoginView (FULL BACKGROUND + LOGIN BOX SLIGHTLY MORE UP) ----------
+const LoginView = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-    async function doLogin(e) {
-      e?.preventDefault();
-      setLoading(true);
-      try {
-        const res = await fetch(`${API_BASE}/api/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw data;
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          setUser(data.user || null);
-        }
-        alert("Login successful");
-        setCurrentView("home");
-      } catch (err) {
-        alert(err?.message || "Login failed");
-      } finally {
-        setLoading(false);
+  async function doLogin(e) {
+    e?.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw data;
+
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+        setUser(data.user || null);
       }
-    }
 
-    return (
-      <div className="min-h-screen flex items-start justify-center p-8 bg-gray-50">
-        <form
-          onSubmit={doLogin}
-          className="bg-white p-6 rounded shadow-md w-full max-w-md"
+      alert("Login successful");
+      setCurrentView("home");
+    } catch (err) {
+      alert(err?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="min-h-screen flex items-start justify-center pt-16 bg-cover bg-center relative"
+      style={{ backgroundImage: "url('/cow-banner.jpg')" }}
+    >
+      {/* dark overlay */}
+      <div className="absolute inset-0 bg-black/40"></div>
+
+      {/* LOGIN BOX */}
+      <form
+        onSubmit={doLogin}
+        className="relative z-10 bg-white/90 backdrop-blur-md p-6 rounded-xl shadow-lg w-full max-w-md"
+      >
+        <h2 className="text-2xl font-bold mb-4 text-center text-gray-900">
+          Login
+        </h2>
+
+        <input
+          className="mb-3 w-full border rounded px-3 py-2"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+
+        <input
+          type="password"
+          className="mb-4 w-full border rounded px-3 py-2"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 font-semibold"
         >
-          <h2 className="text-2xl mb-4">Login</h2>
-          <input
-            className="mb-3 w-full border rounded px-3 py-2"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            type="password"
-            className="mb-4 w-full border rounded px-3 py-2"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-green-600 text-white px-4 py-2 rounded"
-            >
-              {loading ? "Signing..." : "Login"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentView("register")}
-              className="px-4 py-2 border rounded"
-            >
-              Create account
-            </button>
-          </div>
-        </form>
-      </div>
-    );
-  };
+          {loading ? "Signing In..." : "Login"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCurrentView("register")}
+          className="w-full mt-3 text-green-700 font-semibold"
+        >
+          Create Account
+        </button>
+      </form>
+    </div>
+  );
+};
+
 
   // ---------- main render ----------
 
